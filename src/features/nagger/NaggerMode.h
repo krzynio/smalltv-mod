@@ -1,6 +1,6 @@
 // NaggerMode.h — Nagger's wall on the SmallTV (meetings, tasks, Slack).
 //
-// Nagger (github.com/krzynio/nagger) pushes its state to POST /api/nagger every
+// Nagger (a macOS app: meetings, Linear tasks, Slack) pushes its state to POST /api/nagger every
 // few seconds; this mode rotates through the screens that have something on them:
 // clock + next meeting, today's meetings, in progress, to do, Slack. A meeting
 // starting within settings.nagger.urgentMin stops the rotation on a full-screen

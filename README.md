@@ -1,4 +1,4 @@
-> **This fork adds a Nagger screen** ([krzynio/nagger](https://github.com/krzynio/nagger)): the next meeting with a ticking clock and countdown, today's meetings, tasks in progress and to do, and Slack items, rotating; a full-screen countdown before a meeting. Nagger pushes them to `POST /api/nagger`.
+> **This fork adds a Nagger screen** (Nagger: a macOS app that nags about meetings, Linear tasks and Slack): the next meeting with a ticking clock and countdown, today's meetings, tasks in progress and to do, and Slack items, rotating; a full-screen countdown before a meeting. Nagger pushes them to `POST /api/nagger`.
 > Build `env:smalltv_nagger` (`tools/docker-build.sh smalltv_nagger` on Apple Silicon without Rosetta). Put your Wi-Fi in `src/secrets.h` (see `src/secrets.example.h`, ignored by git) and do not publish images built with it. Like the stock firmware, the setup hotspot is `GIFTV` and `/update` and `/network.html` look like the stock pages. On a SmallTV-Ultra flash `env:smalltv_loader` first (it shows up as `giftv-loader.local`), then the full image through the loader's `/update`.
 
 <p align="center">
