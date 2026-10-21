@@ -3,7 +3,7 @@
 // Nagger (a macOS app: meetings, Linear tasks, Slack) pushes its state to POST
 // /api/nagger every few seconds; this mode rotates through the screens that have
 // something on them: the studio clock alone, the time with the next meeting and
-// tasks, today's meetings, in progress, to do, Slack. When Nagger is nagging on
+// tasks, in progress, to do, Slack. When Nagger is nagging on
 // the Mac (a meeting about to start, ON AIR, a new urgent task) the rotation stops
 // for a full screen with a blinking red frame; with Nagger silent for a while, a
 // meeting within settings.nagger.urgentMin does the same from the last data.
@@ -15,7 +15,7 @@
 
 class NaggerMode : public DisplayMode {
  public:
-  enum Screen : uint8_t { STUDIO, TIME, MEETINGS, PROGRESS, TODO, SLACK, ALERT, NONE };
+  enum Screen : uint8_t { STUDIO, TIME, PROGRESS, TODO, SLACK, ALERT, NONE };
 
   const char* id() const override { return "nagger"; }
   uint8_t     modeConst() const override { return MODE_NAGGER; }

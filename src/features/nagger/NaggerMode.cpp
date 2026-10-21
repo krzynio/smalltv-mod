@@ -10,7 +10,6 @@ NaggerMode g_naggerMode;
 
 // U8g2 fonts with Latin Extended-A (Polish letters), from the U8g2 library.
 extern "C" {
-extern const uint8_t u8g2_font_helvR08_te[];
 extern const uint8_t u8g2_font_helvB08_te[];
 extern const uint8_t u8g2_font_helvB10_te[];
 extern const uint8_t u8g2_font_helvR12_te[];
@@ -315,25 +314,6 @@ static void drawTime(const NaggerData& d, uint32_t now) {
   drawTimeTasks(d);
 }
 
-static void drawMeetings(const NaggerData& d, uint32_t now) {
-  header("SPOTKANIA DZIŚ", K_MUTED);
-  const NaggerMeeting* list[1 + NAGGER_LATER];
-  int n = 0;
-  if (d.c.hasMeeting) list[n++] = &d.c.m;
-  for (int i = 0; i < d.c.nLater; i++) list[n++] = &d.c.later[i];
-  for (int i = 0; i < n; i++) {
-    int y = 34 + i * 51;
-    const NaggerMeeting& m = *list[i];
-    bool onAir = m.s <= now && now < m.e;
-    char hm[8];
-    hhmm(hm, sizeof(hm), m.s);
-    font(u8g2_font_helvB12_te);
-    text(10, y + 14, onAir ? "teraz" : hm, onAir ? K_RED : K_AMBER);
-    font(u8g2_font_helvR12_te);
-    wrap(m.t, 62, y + 14, 170, 17, 2, onAir ? K_WHITE : K_TEXT);
-  }
-}
-
 static void drawTasks(const char* title, const NaggerTask* tasks, uint8_t count, uint16_t total, uint16_t overdue, bool badges) {
   char h[40];
   snprintf(h, sizeof(h), "%s · %u", title, total);
@@ -377,7 +357,7 @@ static void drawSlack(const NaggerData& d) {
     wrap(s.t, 20, y + 19, 208, 17, 2, s.x ? K_WHITE : K_TEXT);
     char meta[80];
     snprintf(meta, sizeof(meta), "%s · %s · %s", s.l, s.a, s.g);
-    font(u8g2_font_helvR08_te);
+    font(u8g2_font_helvB08_te);
     wrap(meta, 20, y + 56, 208, 10, 1, s.x ? K_VIOLET : K_VMETA);
   }
 }
@@ -480,7 +460,6 @@ bool NaggerMode::available(Screen sc) const {
   switch (sc) {
     case STUDIO:   return true;
     case TIME:     return true;
-    case MEETINGS: return d.valid && (d.c.hasMeeting || d.c.nLater);
     case PROGRESS: return d.valid && d.c.nProg;
     case TODO:     return d.valid && d.c.nTodo;
     case SLACK:    return d.valid && d.c.nSlack;
@@ -504,7 +483,6 @@ void NaggerMode::drawFull(Screen sc, uint32_t now, const NaggerAlert& alert) {
   switch (sc) {
     case STUDIO:   drawStudio(d, now); break;
     case TIME:     drawTime(d, now); break;
-    case MEETINGS: drawMeetings(d, now); break;
     case PROGRESS: drawTasks("W TOKU", d.c.prog, d.c.nProg, d.c.nProg, 0, false); break;
     case TODO:     drawTasks("DO ZROBIENIA", d.c.todo, d.c.nTodo, d.c.totalTodo, d.c.overdue, true); break;
     case SLACK:    drawSlack(d); break;
