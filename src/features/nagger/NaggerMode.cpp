@@ -314,37 +314,37 @@ static void drawTime(const NaggerData& d, uint32_t now) {
   drawTimeTasks(d);
 }
 
-// In progress / to do: three tasks in large bold type, two lines each, so they
-// read from across the desk (four in 12 px were too small).
+// In progress / to do: four tasks in 14 px bold, two lines each (12 px regular
+// was too small to read, 18 px too big).
 static void drawTasks(const char* title, const NaggerTask* tasks, uint8_t count, uint16_t total, uint16_t overdue, bool badges) {
   char h[40];
   snprintf(h, sizeof(h), "%s · %u", title, total);
-  font(u8g2_font_helvB14_te);
-  text(8, 24, h, K_MUTED);
+  font(u8g2_font_helvB12_te);
+  text(8, 21, h, K_MUTED);
   if (overdue) {
     char o[24];
     snprintf(o, sizeof(o), "po terminie %u", overdue);
-    font(u8g2_font_helvB12_te);
-    textRight(232, 23, o, K_RED);
+    font(u8g2_font_helvB10_te);
+    textRight(232, 20, o, K_RED);
   }
-  if (count > 3) count = 3;
+  if (count > 4) count = 4;
   for (int i = 0; i < count; i++) {
     const NaggerTask& t = tasks[i];
-    int y = 36 + i * 68;
-    G()->fillRect(8, y + 2, 5, 58, priorityColor(t.c));
+    int y = 32 + i * 51;
+    G()->fillRect(8, y + 2, 4, 42, priorityColor(t.c));
     int width = 218;
     if (badges && t.b[0] && t.k) {
-      font(u8g2_font_helvB12_te);
-      int bw = textW(t.b) + 10;
+      font(u8g2_font_helvB10_te);
+      int bw = textW(t.b) + 8;
       uint16_t bg = t.k == 1 ? K_RED : t.k == 2 ? K_AMBER : K_BADGE;
       uint16_t fg = t.k == 3 ? K_TEXT : K_BLACK;
-      G()->fillRoundRect(234 - bw, y + 2, bw, 20, 4, bg);
-      text(239 - bw, y + 17, t.b, fg);
+      G()->fillRoundRect(234 - bw, y + 2, bw, 16, 3, bg);
+      text(238 - bw, y + 14, t.b, fg);
       width -= bw + 4;
     }
     bool emph = t.k == 1 || t.k == 2 || t.c == 1;
-    font(u8g2_font_helvB18_te);
-    wrap(t.t, 20, y + 20, width, 25, 2, emph ? K_WHITE : K_TEXT);
+    font(u8g2_font_helvB14_te);
+    wrap(t.t, 18, y + 16, width, 20, 2, emph ? K_WHITE : K_TEXT);
   }
 }
 
