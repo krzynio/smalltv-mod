@@ -29,6 +29,21 @@ struct NaggerSlack {
   bool x;                // escalated
 };
 
+// What Nagger is nagging about on the Mac right now (Guru, takeover, ON AIR):
+// the device drops the rotation for a blinking full screen.
+#define NAGGER_ALERT_NONE     0
+#define NAGGER_ALERT_MEETING  1   // starts soon
+#define NAGGER_ALERT_ONAIR    2   // just started
+#define NAGGER_ALERT_URGENT   3   // new urgent task
+
+struct NaggerAlert {
+  uint8_t  k;
+  char     t[NAGGER_TEXT];
+  uint32_t s;            // meeting start / end (epoch seconds)
+  uint32_t e;
+  uint16_t n;            // more urgent tasks behind this one
+};
+
 // Everything that is drawn; hashed to tell a real change from a heartbeat push.
 struct NaggerContent {
   bool          hasMeeting;
@@ -45,6 +60,7 @@ struct NaggerContent {
   uint8_t       nSlack;
   uint16_t      totalSlack;
   uint16_t      rot;      // seconds per screen; 0 = the device setting
+  NaggerAlert   alert;
 };
 
 struct NaggerData {

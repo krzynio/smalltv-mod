@@ -16,7 +16,7 @@ extern const uint8_t u8g2_font_helvB10_te[];
 extern const uint8_t u8g2_font_helvR12_te[];
 extern const uint8_t u8g2_font_helvB12_te[];
 extern const uint8_t u8g2_font_helvB14_te[];
-extern const uint8_t u8g2_font_helvB18_tn[];
+extern const uint8_t u8g2_font_helvB18_te[];
 extern const uint8_t u8g2_font_logisoso42_tn[];
 }
 
@@ -39,9 +39,10 @@ extern const uint8_t u8g2_font_logisoso42_tn[];
 
 static const char* const kWeekdays[] = {"nd", "pon", "wt", "śr", "czw", "pt", "sob"};
 
-// Ring geometry of the clock screen (centre, radii), positions precomputed.
-static const int16_t RC_X = 56, RC_Y = 56;
-static int16_t g_secX[60], g_secY[60], g_arcX[60], g_arcY[60];
+// The studio clock fills the screen: second dots, hour dots, amber arc (Nagger's ClockFace
+// proportions: radii 0.43 / 0.38 / 0.475 of the size).
+static const int16_t RC = 120;
+static int16_t g_secX[60], g_secY[60], g_arcX[60], g_arcY[60], g_hourX[12], g_hourY[12];
 
 static Arduino_GFX* G() { return gfxDev(); }
 
@@ -174,7 +175,12 @@ struct Lead { char text[24]; uint16_t color; int arc; };
 
 static Lead lead(const NaggerData& d, uint32_t now) {
   Lead l = {"", K_AMBER, 0};
-  if (!d.valid || !d.c.hasMeeting || !now) return l;
+  if (!d.valid || !now) return l;
+  if (!d.c.hasMeeting) {
+    strlcpy(l.text, "Brak spotkań", sizeof(l.text));
+    l.color = K_MUTED;
+    return l;
+  }
   const NaggerMeeting& m = d.c.m;
   if (m.s <= now && now < m.e) {
     char cd[12];
@@ -214,88 +220,99 @@ static void header(const char* left, uint16_t color) {
 }
 
 static void drawSecondDot(int i, bool on) {
-  G()->fillCircle(g_secX[i], g_secY[i], 1, on ? K_RED : K_DIM);
+  G()->fillCircle(g_secX[i], g_secY[i], 3, on ? K_RED : K_DIM);
 }
 
 static void drawArc(int arc) {
-  for (int i = 0; i < 60; i++) G()->fillCircle(g_arcX[i], g_arcY[i], 1, i < arc ? K_AMBER : K_BLACK);
+  for (int i = 0; i < 60; i++) G()->fillCircle(g_arcX[i], g_arcY[i], 2, i < arc ? K_AMBER : K_BLACK);
 }
 
-static void drawClockDigits(uint32_t now) {
-  G()->fillRect(RC_X - 32, RC_Y - 14, 64, 28, K_BLACK);
+static void drawStudioDigits(uint32_t now) {
+  G()->fillRect(RC - 72, RC - 28, 144, 48, K_BLACK);
   if (!now) return;
   char hm[8];
   hhmm(hm, sizeof(hm), now);
-  font(u8g2_font_helvB18_tn);
-  textCentered(RC_X, RC_Y + 9, hm, K_RED);
+  font(u8g2_font_logisoso42_tn);
+  textCentered(RC, RC + 18, hm, K_RED);
 }
 
-static void drawLead(const Lead& l) {
-  G()->fillRect(112, 8, 128, 26, K_BLACK);
+static void drawStudioSeconds(uint32_t now) {
+  G()->fillRect(RC - 20, RC + 28, 40, 22, K_BLACK);
+  if (!now) return;
+  struct tm t;
+  naggerLocal(now, t);
+  char ss[4];
+  snprintf(ss, sizeof(ss), "%02d", t.tm_sec);
   font(u8g2_font_helvB14_te);
-  text(114, 28, l.text, l.color);
+  textCentered(RC, RC + 46, ss, K_RED);
 }
 
-static void drawCounter(int cx, uint16_t value, const char* label, uint16_t color) {
-  char n[8];
-  snprintf(n, sizeof(n), "%u", value);
-  font(u8g2_font_helvB18_tn);
-  textCentered(cx, 210, n, color);
-  font(u8g2_font_helvR08_te);
-  textCentered(cx, 228, label, K_MUTED);
+// Screen 2: the time in big digits, the next meeting, then as many tasks as fit.
+static void drawTimeDigits(uint32_t now) {
+  G()->fillRect(0, 4, 240, 52, K_BLACK);
+  if (!now) return;
+  char hm[8];
+  hhmm(hm, sizeof(hm), now);
+  font(u8g2_font_logisoso42_tn);
+  textCentered(120, 52, hm, K_RED);
 }
 
-static void drawClockBottom(const NaggerData& d) {
-  G()->fillRect(0, 116, 240, 124, K_BLACK);
-  if (!d.valid) {
-    font(u8g2_font_helvB12_te);
-    textCentered(120, 160, "Czekam na Naggera", K_MUTED);
-    return;
-  }
-  const NaggerContent& c = d.c;
-  char h[32];
-  snprintf(h, sizeof(h), "W TOKU · %u", c.nProg);
-  font(u8g2_font_helvR08_te);
-  text(8, 128, h, K_MUTED);
-  if (c.nProg) {
-    G()->fillRect(8, 136, 3, 34, priorityColor(c.prog[0].c));
-    font(u8g2_font_helvR12_te);
-    wrap(c.prog[0].t, 17, 150, 215, 17, 2, K_TEXT);
-  } else {
-    font(u8g2_font_helvR12_te);
-    text(8, 152, "Nic w toku", K_MUTED);
-  }
+// The lead line as last drawn, so the countdown repaints only when its text changes.
+static char     g_leadText[24];
+static uint16_t g_leadColor;
+
+static void drawTimeLead(const Lead& l, bool force) {
+  if (!force && l.color == g_leadColor && !strcmp(l.text, g_leadText)) return;
+  strlcpy(g_leadText, l.text, sizeof(g_leadText));
+  g_leadColor = l.color;
+  G()->fillRect(0, 64, 240, 26, K_BLACK);
+  font(u8g2_font_helvB14_te);
+  text(10, 84, l.text, l.color);
+}
+
+static void drawTimeTasks(const NaggerData& d) {
+  G()->fillRect(0, 138, 240, 102, K_BLACK);
   if (stale(d)) {
     char msg[40];
-    snprintf(msg, sizeof(msg), "Brak Naggera od %u min", (unsigned)(naggerAgeSec() / 60));
-    font(u8g2_font_helvB10_te);
-    textCentered(120, 214, msg, K_RED);
+    if (d.valid) snprintf(msg, sizeof(msg), "Brak Naggera od %u min", (unsigned)(naggerAgeSec() / 60));
+    else         strlcpy(msg, "Czekam na Naggera", sizeof(msg));
+    font(u8g2_font_helvB12_te);
+    textCentered(120, 190, msg, d.valid ? K_RED : K_MUTED);
     return;
   }
-  drawCounter(40, c.totalTodo, "DO ZROBIENIA", K_TEXT);
-  drawCounter(120, c.overdue, "PO TERMINIE", c.overdue ? K_RED : K_MUTED);
-  drawCounter(200, c.totalSlack, "SLACK", c.totalSlack ? K_VIOLET : K_MUTED);
+  // In progress first, then to do: one line each.
+  const NaggerTask* rows[4];
+  int n = 0;
+  for (int i = 0; i < d.c.nProg && n < 4; i++) rows[n++] = &d.c.prog[i];
+  for (int i = 0; i < d.c.nTodo && n < 4; i++) rows[n++] = &d.c.todo[i];
+  font(u8g2_font_helvR12_te);
+  for (int i = 0; i < n; i++) {
+    int y = 142 + i * 24;
+    G()->fillRect(10, y + 2, 4, 18, priorityColor(rows[i]->c));
+    wrap(rows[i]->t, 22, y + 16, 210, 17, 1, rows[i]->k == 1 ? K_WHITE : K_TEXT);
+  }
 }
 
 // ---- screens ----------------------------------------------------------------
-static void drawClock(const NaggerData& d, uint32_t now) {
+// Screen 1: only the studio clock, Nagger's ClockFace without the label.
+static void drawStudio(const NaggerData& d, uint32_t now) {
   struct tm t;
   if (now) naggerLocal(now, t);
   int sec = now ? t.tm_sec : -1;
   for (int i = 0; i < 60; i++) drawSecondDot(i, i <= sec);
-  for (int i = 0; i < 12; i++) {
-    float a = (i * 30 - 90) * (float)M_PI / 180.0f;
-    G()->fillCircle(RC_X + (int)lroundf(37 * cosf(a)), RC_Y + (int)lroundf(37 * sinf(a)), 2, K_RED);
-  }
-  Lead l = lead(d, now);
-  drawArc(l.arc);
-  drawClockDigits(now);
-  drawLead(l);
+  for (int i = 0; i < 12; i++) G()->fillCircle(g_hourX[i], g_hourY[i], 3, K_RED);
+  drawArc(lead(d, now).arc);
+  drawStudioDigits(now);
+  drawStudioSeconds(now);
+}
+
+static void drawTime(const NaggerData& d, uint32_t now) {
+  drawTimeDigits(now);
+  drawTimeLead(lead(d, now), true);
   font(u8g2_font_helvB12_te);
-  if (d.valid && d.c.hasMeeting) wrap(d.c.m.t, 114, 54, 122, 17, 3, K_WHITE);
-  else if (d.valid) text(114, 54, "Brak spotkań", K_MUTED);
-  G()->drawFastHLine(0, 114, 240, K_LINE);
-  drawClockBottom(d);
+  if (d.valid && d.c.hasMeeting) wrap(d.c.m.t, 10, 108, 220, 18, 2, K_WHITE);
+  G()->drawFastHLine(0, 136, 240, K_LINE);
+  drawTimeTasks(d);
 }
 
 static void drawMeetings(const NaggerData& d, uint32_t now) {
@@ -365,31 +382,94 @@ static void drawSlack(const NaggerData& d) {
   }
 }
 
-static void drawUrgentCountdown(const NaggerData& d, uint32_t now) {
-  G()->fillRect(0, 56, 240, 60, K_BLACK);
-  uint32_t left = d.c.m.s > now ? d.c.m.s - now : 0;
-  char cd[12];
-  countdown(cd, sizeof(cd), left);
-  font(u8g2_font_logisoso42_tn);
-  textCentered(120, 108, cd, left < 60 ? K_RED : K_AMBER);
+// ---- the override: Nagger's alert, a blinking Guru Meditation frame ------------
+// The alert to show: Nagger's, or (when Nagger has gone quiet) a meeting closer
+// than urgentMin from the last data, so the device still warns on its own.
+static NaggerAlert currentAlert(const NaggerData& d, uint32_t now, uint8_t urgentMin) {
+  NaggerAlert a = {};
+  if (!d.valid) return a;
+  if (!stale(d)) return d.c.alert;
+  const NaggerMeeting& m = d.c.m;
+  if (d.c.hasMeeting && now && urgentMin && now < m.s && m.s - now <= (uint32_t)urgentMin * 60) {
+    a.k = NAGGER_ALERT_MEETING;
+    strlcpy(a.t, m.t, sizeof(a.t));
+    a.s = m.s;
+    a.e = m.e;
+  }
+  return a;
 }
 
-static void drawUrgent(const NaggerData& d, uint32_t now) {
-  font(u8g2_font_helvB12_te);
-  textCentered(120, 36, "SPOTKANIE ZA", K_MUTED);
-  drawUrgentCountdown(d, now);
-  font(u8g2_font_helvB14_te);
-  wrap(d.c.m.t, 14, 150, 212, 21, 3, K_WHITE);
+static void drawFrame(bool on) {
+  uint16_t c = on ? K_RED : K_BLACK;
+  G()->fillRect(0, 0, 240, 6, c);
+  G()->fillRect(0, 234, 240, 6, c);
+  G()->fillRect(0, 0, 6, 240, c);
+  G()->fillRect(234, 0, 6, 240, c);
+}
+
+static void drawAlertCountdown(const NaggerAlert& a, uint32_t now) {
+  G()->fillRect(8, 60, 224, 60, K_BLACK);
+  char cd[12];
+  uint16_t color = K_AMBER;
+  if (a.k == NAGGER_ALERT_ONAIR) {
+    countdown(cd, sizeof(cd), a.e > now ? a.e - now : 0);
+    color = K_RED;
+  } else {
+    uint32_t left = a.s > now ? a.s - now : 0;
+    countdown(cd, sizeof(cd), left);
+    if (left < 60) color = K_RED;
+  }
+  font(u8g2_font_logisoso42_tn);
+  textCentered(120, 110, cd, color);
+}
+
+static void drawAlert(const NaggerAlert& a, uint32_t now) {
+  switch (a.k) {
+    case NAGGER_ALERT_MEETING:
+      font(u8g2_font_helvB12_te);
+      textCentered(120, 40, "SPOTKANIE ZA", K_MUTED);
+      drawAlertCountdown(a, now);
+      font(u8g2_font_helvB14_te);
+      wrap(a.t, 16, 150, 208, 21, 3, K_WHITE);
+      break;
+    case NAGGER_ALERT_ONAIR:
+      font(u8g2_font_helvB18_te);
+      textCentered(120, 44, "ON AIR", K_RED);
+      drawAlertCountdown(a, now);
+      font(u8g2_font_helvB14_te);
+      wrap(a.t, 16, 150, 208, 21, 3, K_WHITE);
+      break;
+    case NAGGER_ALERT_URGENT: {
+      font(u8g2_font_helvB18_te);
+      textCentered(120, 50, "PILNE", K_RED);
+      font(u8g2_font_helvB14_te);
+      wrap(a.t, 16, 92, 208, 22, 5, K_WHITE);
+      if (a.n) {
+        char more[24];
+        snprintf(more, sizeof(more), "+%u więcej", a.n);
+        font(u8g2_font_helvB10_te);
+        textCentered(120, 222, more, K_MUTED);
+      }
+      break;
+    }
+    default:
+      break;
+  }
 }
 
 // ---- mode -----------------------------------------------------------------
 void NaggerMode::begin(const Settings& s) {
   for (int i = 0; i < 60; i++) {
     float a = (i * 6 - 90) * (float)M_PI / 180.0f;
-    g_secX[i] = RC_X + (int16_t)lroundf(43 * cosf(a));
-    g_secY[i] = RC_Y + (int16_t)lroundf(43 * sinf(a));
-    g_arcX[i] = RC_X + (int16_t)lroundf(50 * cosf(a));
-    g_arcY[i] = RC_Y + (int16_t)lroundf(50 * sinf(a));
+    g_secX[i] = RC + (int16_t)lroundf(103 * cosf(a));
+    g_secY[i] = RC + (int16_t)lroundf(103 * sinf(a));
+    g_arcX[i] = RC + (int16_t)lroundf(114 * cosf(a));
+    g_arcY[i] = RC + (int16_t)lroundf(114 * sinf(a));
+  }
+  for (int i = 0; i < 12; i++) {
+    float a = (i * 30 - 90) * (float)M_PI / 180.0f;
+    g_hourX[i] = RC + (int16_t)lroundf(91 * cosf(a));
+    g_hourY[i] = RC + (int16_t)lroundf(91 * sinf(a));
   }
   full_ = true;
   switchMs_ = millis();
@@ -398,7 +478,8 @@ void NaggerMode::begin(const Settings& s) {
 bool NaggerMode::available(Screen sc) const {
   const NaggerData& d = naggerGet();
   switch (sc) {
-    case CLOCK:    return true;
+    case STUDIO:   return true;
+    case TIME:     return true;
     case MEETINGS: return d.valid && (d.c.hasMeeting || d.c.nLater);
     case PROGRESS: return d.valid && d.c.nProg;
     case TODO:     return d.valid && d.c.nTodo;
@@ -408,23 +489,26 @@ bool NaggerMode::available(Screen sc) const {
 }
 
 NaggerMode::Screen NaggerMode::next(Screen from) const {
-  for (int hop = 1; hop <= 5; hop++) {
-    Screen cand = (Screen)(((from == URGENT || from == NONE ? CLOCK : from) + hop) % 5);
+  const int count = SLACK + 1;   // the rotating screens, STUDIO..SLACK
+  int base = (from >= count) ? -1 : (int)from;
+  for (int hop = 1; hop <= count; hop++) {
+    Screen cand = (Screen)((base + hop + count) % count);
     if (available(cand)) return cand;
   }
-  return CLOCK;
+  return STUDIO;
 }
 
-void NaggerMode::drawFull(Screen sc, uint32_t now) {
+void NaggerMode::drawFull(Screen sc, uint32_t now, const NaggerAlert& alert) {
   const NaggerData& d = naggerGet();
   G()->fillScreen(K_BLACK);
   switch (sc) {
-    case CLOCK:    drawClock(d, now); break;
+    case STUDIO:   drawStudio(d, now); break;
+    case TIME:     drawTime(d, now); break;
     case MEETINGS: drawMeetings(d, now); break;
     case PROGRESS: drawTasks("W TOKU", d.c.prog, d.c.nProg, d.c.nProg, 0, false); break;
     case TODO:     drawTasks("DO ZROBIENIA", d.c.todo, d.c.nTodo, d.c.totalTodo, d.c.overdue, true); break;
     case SLACK:    drawSlack(d); break;
-    case URGENT:   drawUrgent(d, now); break;
+    case ALERT:    drawAlert(alert, now); frameOn_ = true; drawFrame(true); blinkMs_ = millis(); break;
     default:       break;
   }
   drawnVersion_ = d.version;
@@ -436,29 +520,36 @@ void NaggerMode::drawFull(Screen sc, uint32_t now) {
   lastStale_ = stale(d);
 }
 
-// Once a second on the clock and countdown screens: only what moved.
-void NaggerMode::tick(Screen sc, uint32_t now) {
+// Once a second: only what moved.
+void NaggerMode::tick(Screen sc, uint32_t now, const NaggerAlert& alert) {
   const NaggerData& d = naggerGet();
-  if (sc == URGENT) { drawUrgentCountdown(d, now); return; }
-  if (sc != CLOCK) return;
+  if (sc == ALERT) {
+    if (alert.k != NAGGER_ALERT_URGENT) drawAlertCountdown(alert, now);
+    return;
+  }
+  if (sc != STUDIO && sc != TIME) return;
   struct tm t;
   naggerLocal(now, t);
-  if (t.tm_sec == 0) for (int i = 1; i < 60; i++) drawSecondDot(i, false);
-  drawSecondDot(t.tm_sec, true);
-  if (t.tm_min != lastMinute_) {
-    lastMinute_ = t.tm_min;
-    drawClockDigits(now);
-  }
+  bool minute = t.tm_min != lastMinute_;
+  lastMinute_ = t.tm_min;
   Lead l = lead(d, now);
-  drawLead(l);
-  if (l.arc != lastArc_) {
-    lastArc_ = l.arc;
-    drawArc(l.arc);
+  if (sc == STUDIO) {
+    if (t.tm_sec == 0) for (int i = 1; i < 60; i++) drawSecondDot(i, false);
+    drawSecondDot(t.tm_sec, true);
+    drawStudioSeconds(now);
+    if (minute) drawStudioDigits(now);
+    if (l.arc != lastArc_) {
+      lastArc_ = l.arc;
+      drawArc(l.arc);
+    }
+    return;
   }
+  if (minute) drawTimeDigits(now);
+  drawTimeLead(l, false);
   bool st = stale(d);
   if (st != lastStale_ || (st && t.tm_sec == 0)) {
     lastStale_ = st;
-    drawClockBottom(d);
+    drawTimeTasks(d);
   }
 }
 
@@ -468,26 +559,39 @@ void NaggerMode::service(const Settings& s) {
   uint16_t rot = d.c.rot ? d.c.rot : s.nagger.rotateSec;
   if (rot < 3) rot = 3;
 
-  bool urgent = d.valid && d.c.hasMeeting && now && s.nagger.urgentMin &&
-                now < d.c.m.s && d.c.m.s - now <= (uint32_t)s.nagger.urgentMin * 60;
+  NaggerAlert alert = currentAlert(d, now, s.nagger.urgentMin);
+  bool alerting = alert.k != NAGGER_ALERT_NONE;
   Screen want = screen_;
-  if (urgent) {
-    want = URGENT;
-  } else if (screen_ == NONE || screen_ == URGENT || !available(screen_)) {
-    want = (screen_ == NONE || screen_ == URGENT) ? CLOCK : next(screen_);
+  if (alerting) {
+    want = ALERT;
+  } else if (screen_ == NONE || screen_ == ALERT) {
+    want = STUDIO;
     switchMs_ = millis();
-  } else if (millis() - switchMs_ >= (uint32_t)rot * 1000UL) {
+  } else if (!available(screen_) || millis() - switchMs_ >= (uint32_t)rot * 1000UL) {
     want = next(screen_);
     switchMs_ = millis();
   }
 
-  if (want != screen_ || full_ || d.version != drawnVersion_) {
+  // A different alert (another meeting, another task) repaints too.
+  bool alertChanged = alerting && (alert.k != shownAlertKind_ || alert.s != shownAlertStart_ ||
+                                   strncmp(alert.t, shownAlertTitle_, sizeof(shownAlertTitle_)) != 0);
+  if (want != screen_ || full_ || d.version != drawnVersion_ || alertChanged) {
     screen_ = want;
     full_ = false;
-    drawFull(screen_, now);
-  } else if (now && now != lastSec_) {
+    shownAlertKind_ = alert.k;
+    shownAlertStart_ = alert.s;
+    strlcpy(shownAlertTitle_, alert.t, sizeof(shownAlertTitle_));
+    drawFull(screen_, now, alert);
+    return;
+  }
+  if (screen_ == ALERT && millis() - blinkMs_ >= 500) {
+    blinkMs_ = millis();
+    frameOn_ = !frameOn_;
+    drawFrame(frameOn_);
+  }
+  if (now && now != lastSec_) {
     lastSec_ = now;
-    tick(screen_, now);
+    tick(screen_, now, alert);
   }
 }
 

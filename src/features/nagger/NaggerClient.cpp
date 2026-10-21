@@ -52,7 +52,8 @@ static uint32_t fnv(const void* data, size_t n) {
 }
 
 // {"v":1,"ts":..,"o":7200,"rot":8,"m":{"t","s","e"},"l":[..],"p":[{"t","c","b","k"}],
-//  "d":[..],"nd":12,"no":2,"s":[{"t","l","a","g","x"}],"ns":6}  (Nagger's TVState)
+//  "d":[..],"nd":12,"no":2,"s":[{"t","l","a","g","x"}],"ns":6,
+//  "a":{"k":"meeting|onair|urgent","t","s","e","n"}}  (Nagger's TVState)
 bool naggerApply(const String& body) {
   JsonDocument doc;
   if (deserializeJson(doc, body)) return false;
@@ -88,6 +89,17 @@ bool naggerApply(const String& body) {
   c.overdue    = doc["no"] | 0;
   c.totalSlack = doc["ns"] | 0;
   c.rot        = doc["rot"] | 0;
+  JsonObjectConst a = doc["a"];
+  if (!a.isNull()) {
+    const char* k = a["k"] | "";
+    c.alert.k = !strcmp(k, "meeting") ? NAGGER_ALERT_MEETING
+              : !strcmp(k, "onair")   ? NAGGER_ALERT_ONAIR
+              : !strcmp(k, "urgent")  ? NAGGER_ALERT_URGENT : NAGGER_ALERT_NONE;
+    copyText(c.alert.t, sizeof(c.alert.t), a["t"]);
+    c.alert.s = a["s"] | 0u;
+    c.alert.e = a["e"] | 0u;
+    c.alert.n = a["n"] | 0;
+  }
 
   g_nagger.ts     = doc["ts"] | 0u;
   g_nagger.offset = doc["o"] | 0;
