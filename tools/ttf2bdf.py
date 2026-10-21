@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # Renders a TTF into a 1-bit BDF for U8g2's bdfconv (needs freetype-py).
 # How src/features/nagger/fonts/nsansB13.c was made (Liberation Sans Bold 2.1.5):
-#   python tools/ttf2bdf.py LiberationSans-Bold.ttf 13 nsansB13.bdf
+#   python tools/ttf2bdf.py LiberationSans-Bold.ttf 19 nsansB13.bdf   (19 px em = 13 px capitals)
 #   bdfconv -f 1 -b 0 -m '32-383,183' -n u8g2_font_nsansB13_te -o nsansB13.c nsansB13.bdf
 # Keep Reserved Font Names (Liberation, Arimo, Tinos, Cousine) out of the font name.
 import sys
