@@ -17,6 +17,7 @@ extern const uint8_t u8g2_font_helvB12_te[];
 extern const uint8_t u8g2_font_helvB14_te[];
 extern const uint8_t u8g2_font_helvB18_te[];
 extern const uint8_t u8g2_font_logisoso42_tn[];
+extern const uint8_t u8g2_font_nsansB13_te[];   // fonts/nsansB13.c: Liberation Sans Bold at 13 px
 }
 
 // Nagger's wall colours (RGB565), through the Display tab's colour correction.
@@ -314,8 +315,9 @@ static void drawTime(const NaggerData& d, uint32_t now) {
   drawTimeTasks(d);
 }
 
-// In progress / to do: four tasks in 12 px bold, two lines each (12 px regular
-// was too small to read, 18 px and 14 px too big).
+// In progress / to do: four tasks in 13 px bold, two lines each (12 px regular
+// was too small to read, 18 px and 14 px too big). The 13 px font is our own
+// (fonts/nsansB13.c): U8g2's Helvetica jumps from 12 to 14.
 static void drawTasks(const char* title, const NaggerTask* tasks, uint8_t count, uint16_t total, uint16_t overdue, bool badges) {
   char h[40];
   snprintf(h, sizeof(h), "%s · %u", title, total);
@@ -343,7 +345,7 @@ static void drawTasks(const char* title, const NaggerTask* tasks, uint8_t count,
       width -= bw + 4;
     }
     bool emph = t.k == 1 || t.k == 2 || t.c == 1;
-    font(u8g2_font_helvB12_te);
+    font(u8g2_font_nsansB13_te);
     wrap(t.t, 18, y + 16, width, 18, 2, emph ? K_WHITE : K_TEXT);
   }
 }
