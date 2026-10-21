@@ -8,6 +8,11 @@
 // below by the build-time target macro. Everything else here is shared.
 #pragma once
 
+// Local, untracked defaults (the first Wi-Fi network): src/secrets.h, see src/secrets.example.h.
+#if __has_include("secrets.h")
+#include "secrets.h"
+#endif
+
 // ---------------------------------------------------------------------------
 // Firmware identity
 // ---------------------------------------------------------------------------
@@ -15,8 +20,9 @@
 #define FW_VERSION  "2.16.0"
 
 // Project / update references (shown in the web UI; used by the GitHub self-update)
-#define REPO_URL      "https://github.com/giovi321/smalltv-mod"
-#define REPO_OWNER    "giovi321"
+// Fork with the Nagger screen (krzynio/smalltv-mod): self-updates come from here, not upstream.
+#define REPO_URL      "https://github.com/krzynio/smalltv-mod"
+#define REPO_OWNER    "krzynio"
 #define REPO_NAME     "smalltv-mod"
 // Release asset the GitHub self-updater pulls, and the short variant name shown
 // in the web UI. One app image per target, plus a second one for the two boards
@@ -41,6 +47,9 @@
 #elif defined(SMALLTV_ESP32)
   #define UPDATE_ASSET "smalltv-mod-firmware-esp32.bin"
   #define FW_VARIANT   "esp32"
+#elif defined(SMALLTV_NAGGER)
+  #define UPDATE_ASSET "smalltv-mod-firmware-nagger.bin"
+  #define FW_VARIANT   "esp8266-nagger"
 #elif defined(SMALLTV_LEAN)
   #define UPDATE_ASSET "smalltv-mod-firmware-lean.bin"
   #define FW_VARIANT   "esp8266-lean"
@@ -141,7 +150,16 @@
 #define MODE_NOTIFY    4             // transient overlay: armed over HTTP, never persisted
 #define MODE_THEME     6             // declarative installed clock faces
 #define MODE_HA        5             // Home Assistant screens pushed over MQTT
+#define MODE_NAGGER    7             // meetings, tasks and Slack pushed by Nagger (features/nagger)
+// Only in env:smalltv_nagger: it needs U8g2's fonts for the Polish letters.
+#ifndef WITH_NAGGER
+#define WITH_NAGGER 0
+#endif
+#if WITH_NAGGER
+#define DEFAULT_MODE MODE_NAGGER
+#else
 #define DEFAULT_MODE MODE_STOCKS
+#endif
 #define DEFAULT_CAROUSEL_SEC 30      // per-mode dwell in carousel
 
 // Full-screen attention overlay (POST /api/notify), in seconds.
@@ -346,7 +364,8 @@
 // ---------------------------------------------------------------------------
 // Defaults (used on first boot / factory reset)
 // ---------------------------------------------------------------------------
-#define DEFAULT_AP_SSID      "SmallTV-Setup"
+// Like the stock GeekMagic firmware: the setup hotspot is "GIFTV".
+#define DEFAULT_AP_SSID      "GIFTV"
 #define DEFAULT_AP_PASS      ""              // empty => open AP
 #define DEFAULT_HOSTNAME     "smalltv"
 #define DEFAULT_POLL_SEC      120            // how often to refresh data
@@ -378,8 +397,8 @@
 // --- Clock / night mode (device-wide) ---
 #define NTP_SERVER1             "pool.ntp.org"
 #define NTP_SERVER2             "time.nist.gov"
-#define DEFAULT_TZ_NAME         ""        // IANA display name; empty = UTC
-#define DEFAULT_TZ_POSIX        "UTC0"    // POSIX TZ rule the device feeds SNTP
+#define DEFAULT_TZ_NAME         "Europe/Warsaw"                // IANA display name
+#define DEFAULT_TZ_POSIX        "CET-1CEST,M3.5.0,M10.5.0/3"   // POSIX TZ rule the device feeds SNTP
 #define DEFAULT_NIGHT_ENABLED   false
 #define DEFAULT_NIGHT_START_MIN 1320      // 22:00
 #define DEFAULT_NIGHT_END_MIN   420       // 07:00

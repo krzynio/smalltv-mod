@@ -39,11 +39,17 @@
 #include "HaMode.h"
 #include "MqttClient.h"
 #endif
+#if WITH_NAGGER
+#include "NaggerMode.h"
+#endif
 
 // ---- mode registry --------------------------------------------------------
 // The compiled-in features, in display order. main.cpp holds no per-feature
 // state of its own — each mode owns its fetch/render/dirty tracking.
 static DisplayMode* kModes[] = {
+#if WITH_NAGGER
+  &g_naggerMode,
+#endif
 #if WITH_TICKER
   &g_tickerMode,
 #endif
@@ -78,6 +84,9 @@ static bool carouselHas(const Settings& s, const DisplayMode* m) {
 #endif
 #if WITH_THEME
     case MODE_THEME:  return s.carouselTheme;
+#endif
+#if WITH_NAGGER
+    case MODE_NAGGER: return s.carouselNagger;
 #endif
     default:          return true;
   }

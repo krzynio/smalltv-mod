@@ -42,3 +42,6 @@ dependencies.lock
 
 # manual quotes-branch staging dir (see .github/scripts/fetch-quotes.mjs)
 /out/
+
+# Local Wi-Fi defaults (see src/secrets.example.h)
+src/secrets.h

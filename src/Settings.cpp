@@ -140,6 +140,24 @@ void UsageSettings::fromJson(JsonObjectConst o) {
 }
 
 // ===========================================================================
+// Nagger slice
+// ===========================================================================
+void NaggerSettings::setDefaults() {
+  rotateSec = 8;
+  urgentMin = 5;
+}
+
+void NaggerSettings::toJson(JsonObject o) const {
+  o["rotateSec"] = rotateSec;
+  o["urgentMin"] = urgentMin;
+}
+
+void NaggerSettings::fromJson(JsonObjectConst o) {
+  if (o["rotateSec"].is<int>()) rotateSec = constrain((int)o["rotateSec"], 3, 120);
+  if (o["urgentMin"].is<int>()) urgentMin = constrain((int)o["urgentMin"], 0, 30);
+}
+
+// ===========================================================================
 // Clock / night mode slice
 // ===========================================================================
 static uint16_t hhmmToMin(const char* s, uint16_t fallback) {
@@ -425,6 +443,12 @@ void Settings::setDefaults() {
     wifi[i].ssid = "";
     wifi[i].pass = "";
   }
+#ifdef DEFAULT_WIFI_SSID
+  // Local default from src/secrets.h: a fresh device joins this network straight away.
+  wifi[0].ssid = DEFAULT_WIFI_SSID;
+  wifi[0].pass = DEFAULT_WIFI_PASS;
+  wifiCount = 1;
+#endif
   apSsid  = DEFAULT_AP_SSID;
   apPass  = DEFAULT_AP_PASS;
   // Unique per device so several SmallTVs on one network don't collide on
@@ -436,6 +460,7 @@ void Settings::setDefaults() {
   carouselSec = DEFAULT_CAROUSEL_SEC;
   carouselTicker = carouselUsage = carouselRadar = carouselHa = true;
   carouselTheme = false;   // opt in: needs an installed theme, else the slot shows an error
+  carouselNagger = true;
   httpTimeout = DEFAULT_HTTP_TIMEOUT;
 
   brightness = DEFAULT_BRIGHTNESS;
@@ -445,6 +470,7 @@ void Settings::setDefaults() {
 
   ticker.setDefaults();
   usage.setDefaults();
+  nagger.setDefaults();
   radar.setDefaults();
   ha.setDefaults();
   clock.setDefaults();
@@ -515,7 +541,8 @@ void settingsToJson(const Settings& s, JsonObject root, bool includeSecrets) {
 
   // Mode + shared HTTP/display
   root["themeId"] = s.themeId;
-  root["mode"]              = (s.mode == MODE_THEME)    ? "theme"
+  root["mode"]              = (s.mode == MODE_NAGGER)   ? "nagger"
+                            : (s.mode == MODE_THEME)    ? "theme"
                             : (s.mode == MODE_RADAR)    ? "radar"
                             : (s.mode == MODE_USAGE)    ? "usage"
                             : (s.mode == MODE_HA)       ? "ha"
@@ -526,6 +553,7 @@ void settingsToJson(const Settings& s, JsonObject root, bool includeSecrets) {
   root["carouselRadar"]     = s.carouselRadar;
   root["carouselHa"]        = s.carouselHa;
   root["carouselTheme"]     = s.carouselTheme;
+  root["carouselNagger"]    = s.carouselNagger;
   root["httpTimeout"]       = s.httpTimeout;
   root["brightness"]        = s.brightness;
   root["autoBrightness"]    = s.autoBrightness;
@@ -535,6 +563,7 @@ void settingsToJson(const Settings& s, JsonObject root, bool includeSecrets) {
   // Feature slices
   s.ticker.toJson(root["ticker"].to<JsonObject>());
   s.usage.toJson(root["usage"].to<JsonObject>());
+  s.nagger.toJson(root["nagger"].to<JsonObject>());
   s.radar.toJson(root["radar"].to<JsonObject>());
   s.ha.toJson(root["ha"].to<JsonObject>(), includeSecrets);
   s.clock.toJson(root["clock"].to<JsonObject>());
@@ -589,7 +618,8 @@ void settingsApplyJson(Settings& s, JsonObjectConst root) {
 
   if (root["mode"].is<const char*>()) {
     String m = root["mode"].as<String>();
-    s.mode = m.equalsIgnoreCase("theme")    ? MODE_THEME
+    s.mode = m.equalsIgnoreCase("nagger")   ? MODE_NAGGER
+           : m.equalsIgnoreCase("theme")    ? MODE_THEME
            : m.equalsIgnoreCase("radar")    ? MODE_RADAR
            : m.equalsIgnoreCase("usage")    ? MODE_USAGE
            : m.equalsIgnoreCase("ha")       ? MODE_HA
@@ -610,6 +640,7 @@ void settingsApplyJson(Settings& s, JsonObjectConst root) {
   if (root["carouselRadar"].is<bool>())   s.carouselRadar = root["carouselRadar"];
   if (root["carouselHa"].is<bool>())      s.carouselHa = root["carouselHa"];
   if (root["carouselTheme"].is<bool>())   s.carouselTheme = root["carouselTheme"];
+  if (root["carouselNagger"].is<bool>())  s.carouselNagger = root["carouselNagger"];
 
   if (root["httpTimeout"].is<int>())        s.httpTimeout = constrain((int)root["httpTimeout"], 1000, 20000);
   if (root["brightness"].is<int>())         s.brightness = constrain((int)root["brightness"], 0, 100);
@@ -628,6 +659,7 @@ void settingsApplyJson(Settings& s, JsonObjectConst root) {
   if (root["radar"].is<JsonObjectConst>()) s.radar.fromJson(root["radar"].as<JsonObjectConst>());
   // HA has no legacy flat layout either; only apply when its object is present.
   if (root["ha"].is<JsonObjectConst>()) s.ha.fromJson(root["ha"].as<JsonObjectConst>());
+  if (root["nagger"].is<JsonObjectConst>()) s.nagger.fromJson(root["nagger"].as<JsonObjectConst>());
   if (root["clock"].is<JsonObjectConst>()) s.clock.fromJson(root["clock"].as<JsonObjectConst>());
   if (root["display"].is<JsonObjectConst>()) s.display.fromJson(root["display"].as<JsonObjectConst>());
   if (root["wg"].is<JsonObjectConst>()) s.wg.fromJson(root["wg"].as<JsonObjectConst>());

@@ -55,6 +55,7 @@ small.hint{display:block;color:var(--mut);margin-top:4px;font-size:12px}
 <nav>
  <button data-t="status" class="active">Status</button>
  <button data-t="wifi">WiFi</button>
+ <button data-t="nagger">Nagger</button>
  <button data-t="display">Display</button>
  <button data-t="ticker">Ticker</button>
  <button data-t="usage">Clawdmeter</button>
@@ -115,6 +116,7 @@ small.hint{display:block;color:var(--mut);margin-top:4px;font-size:12px}
   <div class="card"><h2>Mode</h2>
    <label>What this device shows</label>
    <select id="mode" onchange="modeChanged()">
+    <option value="nagger">Nagger</option>
     <option value="stocks">Ticker</option>
     <option value="usage">Clawdmeter</option>
     <option value="radar">Radar</option>
@@ -124,6 +126,7 @@ small.hint{display:block;color:var(--mut);margin-top:4px;font-size:12px}
    </select>
    <div id="carouselRow">
     <label>Switch mode every (s)</label><input id="carouselSec" type="number" min="5" max="3600">
+    <div class="chk"><input id="carouselNagger" type="checkbox"><label>Nagger</label></div>
     <div class="chk"><input id="carouselTicker" type="checkbox"><label>Ticker</label></div>
     <div class="chk"><input id="carouselUsage" type="checkbox"><label>Clawdmeter</label></div>
     <div class="chk"><input id="carouselRadar" type="checkbox"><label>Radar</label></div>
@@ -242,6 +245,17 @@ small.hint{display:block;color:var(--mut);margin-top:4px;font-size:12px}
    </div>
    <div id="cashRes"></div>
    <small class="hint">Searches cash.ch from your browser and turns the result into the listing key the ticker needs. Click a match to add it as a ticker.</small>
+  </div>
+ </section>
+
+ <!-- NAGGER (feature) -->
+ <section id="nagger" class="tab">
+  <div class="card"><h2>Nagger</h2>
+   <p class="req"><b>Nagger sends everything here.</b> In Nagger on the Mac: Settings → Ekranik SmallTV, turn it on and enter this device's address (<code id="naggerAddr">its IP</code> or <code>&lt;hostname&gt;.local</code>). Nagger then pushes the next meeting, tasks and Slack to <code>/api/nagger</code> every few seconds.</p>
+   <div id="naggerState" class="muted">...</div>
+   <label>Seconds per screen (when Nagger does not set it)</label><input id="naggerRotateSec" type="number" min="3" max="120">
+   <label>Stop on a full-screen countdown this many minutes before a meeting (0 = never)</label><input id="naggerUrgentMin" type="number" min="0" max="30">
+   <small class="hint">Screens: clock and next meeting, today's meetings, in progress, to do, Slack. Empty ones are skipped. Night dimming is in the Display tab.</small>
   </div>
  </section>
 
@@ -418,8 +432,8 @@ var TZMAP={
 function fillTz(){var s=$('tz');if(!s)return;var keys=Object.keys(TZMAP).filter(function(k){return k!==''});
  keys.sort();s.innerHTML='<option value="">UTC</option>'+keys.map(function(k){return '<option value="'+k+'">'+k+'</option>'}).join('');}
 
-var MODEOPT={ticker:'stocks',usage:'usage',radar:'radar',ha:'ha',theme:'theme'};
-var CAROPT={ticker:'carouselTicker',usage:'carouselUsage',radar:'carouselRadar',ha:'carouselHa',theme:'carouselTheme'};
+var MODEOPT={ticker:'stocks',usage:'usage',radar:'radar',ha:'ha',theme:'theme',nagger:'nagger'};
+var CAROPT={ticker:'carouselTicker',usage:'carouselUsage',radar:'carouselRadar',ha:'carouselHa',theme:'carouselTheme',nagger:'carouselNagger'};
 function hideFeat(name){
  var b=document.querySelector('nav button[data-t="'+name+'"]'); if(b)b.remove();
  var sec=$(name); if(sec)sec.remove();
@@ -442,7 +456,7 @@ function setGain(id,lab,v){var n=(v!=null?v:100);sv(id,n);var e=$(lab);if(e)e.te
 function resetColors(){setGain('rGain','rgVal',100);setGain('gGain','ggVal',100);setGain('bGain','bgVal',100);
  toast('Gains reset — press Save settings to apply')}
 function loadConfig(){return j('/api/config').then(function(c){C=c;
- var f=c.features||{}; ['ticker','usage','radar','ha'].forEach(function(k){if(f[k]===false)hideFeat(k)});
+ var f=c.features||{}; ['ticker','usage','radar','ha','nagger'].forEach(function(k){if(f[k]===false)hideFeat(k)});
  // WireGuard is only built for the chips with room for it; drop the card otherwise
  if(f.theme!==true){hideFeat('theme');var tc=$('themeCard');if(tc)tc.remove()}else{loadThemes()}
  if(f.wireguard===false){var wc=$('wgCard'); if(wc)wc.remove()}
@@ -477,6 +491,9 @@ function loadConfig(){return j('/api/config').then(function(c){C=c;
  sv('carouselSec',c.carouselSec||30);
  sc('carouselTicker',c.carouselTicker!==false); sc('carouselUsage',c.carouselUsage!==false); sc('carouselRadar',c.carouselRadar!==false);
  sc('carouselHa',c.carouselHa!==false); sc('carouselTheme',c.carouselTheme===true);
+ sc('carouselNagger',c.carouselNagger!==false);
+ // nagger slice
+ var ng=c.nagger||{}; sv('naggerRotateSec',ng.rotateSec||8); sv('naggerUrgentMin',ng.urgentMin!=null?ng.urgentMin:5);
  // HA / MQTT slice
  var h=c.ha||{};
  sv('haBrokerHost',h.brokerHost); sv('haBrokerPort',h.brokerPort||1883);
@@ -565,7 +582,7 @@ function collect(){
  var o={mode:gv('mode'),
   carouselSec:parseInt(gv('carouselSec'))||30,
   carouselTicker:gc('carouselTicker'), carouselUsage:gc('carouselUsage'), carouselRadar:gc('carouselRadar'),
-  carouselHa:gc('carouselHa'), carouselTheme:gc('carouselTheme'),
+  carouselHa:gc('carouselHa'), carouselTheme:gc('carouselTheme'), carouselNagger:gc('carouselNagger'),
   brightness:parseInt(gv('brightness'))||0,
   rotation:parseInt(gv('rotation')),
   autoBrightness:gc('autoBrightness'),
@@ -607,6 +624,8 @@ function collect(){
   });
   o.ticker=t;
  }
+ // nagger slice
+ if($('nagger')) o.nagger={rotateSec:parseInt(gv('naggerRotateSec'))||8, urgentMin:parseInt(gv('naggerUrgentMin'))||0};
  // usage slice
  if($('usage')) o.usage={usageUrl:gv('usageUrl'), pollSec:parseInt(gv('usagePollSec'))||0};
  // HA / MQTT slice (blank password keeps the stored one, so only send what was typed)
@@ -705,8 +724,12 @@ function loadStatus(){j('/api/status').then(function(s){
  if(!window._otaShown){window._otaShown=1;var gm=$('ghMsg');if(gm&&!gm.textContent&&s.updateMsg&&s.updateMsg!=='updating...')gm.textContent='Last update: '+s.updateMsg}
  var fv=$('footVer'); if(fv)fv.textContent=' v'+s.version;
  if(s.repo){var rl=$('repoLink'); if(rl)rl.href=s.repo+'/releases'; var fr=$('footRepo'); if(fr)fr.href=s.repo;}
+ var na=$('naggerAddr'); if(na&&s.ip)na.textContent=s.ip;
+ var nst=$('naggerState'); if(nst&&s.nagger){var a=s.nagger.age;
+  nst.textContent=a<0?'Nothing from Nagger yet.':('Last push from Nagger '+(a<60?a+' s':Math.round(a/60)+' min')+' ago'+(s.nagger.meeting?' · next: '+s.nagger.meeting:'')+'.');}
  $('statusBox').innerHTML=
   kv('Firmware',s.fw+' '+s.version+(s.variant?' ('+s.variant+')':''))+kv('Mode',s.mode.toUpperCase())+
+  (s.nagger?kv('Nagger',s.nagger.age<0?'no push yet':s.nagger.age+' s ago'):'')+
   kv('Network',s.ssid||'-')+kv('IP',s.ip||'-')+kv('mDNS','http://'+(C.hostname||'smalltv')+'.local')+
   kv('Signal',s.rssi?s.rssi+' dBm':'-')+
   kv('Free heap',s.heap+' B'+(s.maxblk?' ('+s.maxblk+' B largest block)':''))+

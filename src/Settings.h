@@ -73,6 +73,16 @@ struct UsageSettings {
 };
 
 // ---- Clock / night mode slice (device-wide) --------------------------------
+// Nagger screen (features/nagger): Nagger pushes meetings, tasks and Slack to
+// POST /api/nagger; these only shape how the device shows them.
+struct NaggerSettings {
+  uint16_t rotateSec;     // seconds per screen when Nagger does not say (its push carries "rot")
+  uint8_t  urgentMin;     // a meeting this close stops the rotation on the countdown
+  void setDefaults();
+  void toJson(JsonObject o) const;
+  void fromJson(JsonObjectConst o);
+};
+
 struct ClockSettings {
   String   tz;            // IANA display name, e.g. "Europe/Rome" (UI round-trip)
   String   tzPosix;       // POSIX TZ rule the device feeds SNTP
@@ -194,7 +204,7 @@ struct Settings {
 
   // --- Carousel (mode == MODE_CAROUSEL): dwell + which features rotate ---
   uint16_t carouselSec;
-  bool carouselTicker, carouselUsage, carouselRadar, carouselHa, carouselTheme;
+  bool carouselTicker, carouselUsage, carouselRadar, carouselHa, carouselTheme, carouselNagger;
 
   // --- Shared HTTP / display ---
   uint16_t httpTimeout; // ms
@@ -206,6 +216,7 @@ struct Settings {
   // --- Feature slices ---
   TickerSettings  ticker;
   UsageSettings   usage;
+  NaggerSettings  nagger;
   RadarSettings   radar;
   HaSettings      ha;        // MQTT broker for HA screens
   ClockSettings   clock;

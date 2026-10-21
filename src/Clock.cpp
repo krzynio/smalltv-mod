@@ -49,7 +49,10 @@ void clockReapply(const Settings& s) {
   // with a wrong clock (and that build is an ESP32, where the heap cost is moot).
   const bool themeOnScreen = WITH_THEME &&
       (s.mode == MODE_THEME || (s.mode == MODE_CAROUSEL && s.carouselTheme));
-  if (!s.clock.nightEnabled && !wgNeedsClock(s) && !themeOnScreen) return;
+  // The Nagger screen ticks a clock and counts down to meetings.
+  const bool naggerOnScreen = WITH_NAGGER &&
+      (s.mode == MODE_NAGGER || (s.mode == MODE_CAROUSEL && s.carouselNagger));
+  if (!s.clock.nightEnabled && !wgNeedsClock(s) && !themeOnScreen && !naggerOnScreen) return;
   if (!s_ntpStarted || s.clock.tzPosix != s_armedTz) clockBegin(s);
 }
 

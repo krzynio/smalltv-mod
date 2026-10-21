@@ -20,6 +20,10 @@
 #include "features/theme/ThemeWeb.h"
 #endif
 #include "SettingsTransaction.h"
+#include "StockPages.h"
+#if WITH_NAGGER
+#include "NaggerClient.h"
+#endif
 #if WITH_HA
 #include "HaScreens.h"
 #include "MqttClient.h"
@@ -85,6 +89,7 @@ static void handleGetConfig() {
   feat["radar"]  = (bool)WITH_RADAR;
   feat["ha"]     = (bool)WITH_HA;
   feat["theme"]  = (bool)WITH_THEME;
+  feat["nagger"] = (bool)WITH_NAGGER;
   // WireGuard is a per-chip decision rather than a per-feature one: it is
   // compiled only where the image has room for it (the ESP32-C2 build).
 #if defined(SMALLTV_WIREGUARD)
@@ -123,6 +128,15 @@ static void handleStatus() {
   o["uptime"] = millis() / 1000;
   o["reset"] = appResetReason();
   o["synced"] = clockSynced();
+#if WITH_NAGGER
+  {
+    // Seconds since Nagger's last push (-1 = never), and what it said is next.
+    uint32_t age = naggerAgeSec();
+    JsonObject ng = o["nagger"].to<JsonObject>();
+    ng["age"] = age == UINT32_MAX ? -1 : (int32_t)age;
+    if (naggerGet().valid && naggerGet().c.hasMeeting) ng["meeting"] = naggerGet().c.m.t;
+  }
+#endif
   { String ts = clockTimeStr(); if (ts.length()) o["time"] = ts; }
   o["tz"]        = S->clock.tz;
   o["night"]     = clockNightActive();   // dimming now
@@ -433,12 +447,78 @@ static void handleNotify() {
 }
 #endif
 
+// Nagger pushes meetings, tasks and Slack here (features/nagger). Open like
+// /api/usage: Nagger has no credentials to send, and it only writes the screen.
+static void handleNaggerPush() {
+  if (!server.hasArg("plain")) { server.send(400, "text/plain", "no body"); return; }
+#if WITH_NAGGER
+  bool ok = naggerApply(server.arg("plain"));
+#else
+  bool ok = false;
+#endif
+  server.send(ok ? 200 : 400, "application/json", ok ? "{\"ok\":true}" : "{\"ok\":false}");
+}
+
+// ---- stock-style Wi-Fi setup (StockPages.h) ---------------------------------
+static void handleNetworkPage() {
+  if (!requireAuth()) return;
+  server.send_P(200, "text/html", STOCK_NETWORK_PAGE);
+}
+
+// {"aps":[{"ss":"name","r":percent}]}, the stock page's format.
+static void handleWifiJson() {
+  if (!requireAuth()) return;
+  int n = WiFi.scanNetworks();
+  JsonDocument doc;
+  JsonArray aps = doc["aps"].to<JsonArray>();
+  for (int i = 0; i < n && i < 25; i++) {
+    if (!WiFi.SSID(i).length()) continue;
+    JsonObject o = aps.add<JsonObject>();
+    o["ss"] = WiFi.SSID(i);
+    o["r"]  = constrain(2 * (WiFi.RSSI(i) + 100), 0, 100);
+  }
+  WiFi.scanDelete();
+  sendJson(doc);
+}
+
+// /wifisave?s=<ssid>&p=<pass>: the network goes first in the list, then reboot.
+static void handleWifiSave() {
+  if (!requireAuth()) return;
+  String ssid = server.arg("s");
+  if (!ssid.length()) { server.send(400, "text/plain", "no ssid"); return; }
+  String pass = server.arg("p");
+  uint8_t keep = 1;
+  WifiCred list[MAX_WIFI_NETS];
+  list[0].ssid = ssid;
+  list[0].pass = pass;
+  for (uint8_t i = 0; i < S->wifiCount && keep < MAX_WIFI_NETS; i++) {
+    if (S->wifi[i].ssid == ssid) continue;
+    list[keep++] = S->wifi[i];
+  }
+  for (uint8_t i = 0; i < MAX_WIFI_NETS; i++) S->wifi[i] = i < keep ? list[i] : WifiCred();
+  S->wifiCount = keep;
+  if (!saveSettings(*S)) { server.send(500, "text/plain", "save failed"); return; }
+  server.send(200, "text/plain", "OK");
+  scheduleReboot(800);
+}
+
 // ---- OTA ------------------------------------------------------------------
+static void handleUpdatePage() {
+  if (!requireAuth()) return;
+  server.send_P(200, "text/html", STOCK_UPDATE_PAGE);
+}
+
+// The web UI posts with fetch and reads "OK"; the stock-style form navigates,
+// so a browser asking for HTML gets the stock success page instead.
 static void handleUpdateDone() {
   if (!requireAuth()) return;
   bool ok = !Update.hasError();
   server.sendHeader("Connection", "close");
-  server.send(ok ? 200 : 500, "text/plain", ok ? "OK" : platformUpdateError().c_str());
+  if (ok && server.header("Accept").indexOf("text/html") >= 0) {
+    server.send_P(200, "text/html", STOCK_UPDATE_OK);
+  } else {
+    server.send(ok ? 200 : 500, "text/plain", ok ? "OK" : platformUpdateError().c_str());
+  }
   if (ok) scheduleReboot(1200);
 }
 
@@ -472,8 +552,8 @@ static void handleUpdateUpload() {
 // ---- captive portal -------------------------------------------------------
 static void handleNotFound() {
   if (netMode() == NET_AP) {
-    // Redirect everything to the config page so the captive portal pops.
-    server.sendHeader("Location", String("http://") + WiFi.softAPIP().toString(), true);
+    // Redirect everything to the Wi-Fi page so the captive portal pops (like stock).
+    server.sendHeader("Location", String("http://") + WiFi.softAPIP().toString() + "/network.html", true);
     server.send(302, "text/plain", "");
   } else {
     server.send(404, "text/plain", "Not found");
@@ -510,7 +590,12 @@ void webPortalBegin(Settings& settings) {
 #if WITH_NOTIFY
   server.on("/api/notify", HTTP_POST, handleNotify);     // full-screen attention overlay
 #endif
+  server.on("/update", HTTP_GET, handleUpdatePage);
   server.on("/update", HTTP_POST, handleUpdateDone, handleUpdateUpload);
+  server.on("/network.html", HTTP_GET, handleNetworkPage);
+  server.on("/wifi.json", HTTP_GET, handleWifiJson);
+  server.on("/wifisave", HTTP_GET, handleWifiSave);
+  server.on("/api/nagger", HTTP_POST, handleNaggerPush);    // Nagger pushes its wall here
 
   // Common captive-portal probe endpoints
   server.on("/generate_204", handleNotFound);
@@ -519,6 +604,8 @@ void webPortalBegin(Settings& settings) {
   server.on("/connecttest.txt", handleNotFound);
   server.onNotFound(handleNotFound);
 
+  // Accept tells the stock-style update form from the web UI's fetch (handleUpdateDone).
+  server.collectHeaders("Accept");
   server.begin();
 }
 
