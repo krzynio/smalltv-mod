@@ -314,8 +314,8 @@ static void drawTime(const NaggerData& d, uint32_t now) {
   drawTimeTasks(d);
 }
 
-// In progress / to do: four tasks in 14 px bold, two lines each (12 px regular
-// was too small to read, 18 px too big).
+// In progress / to do: four tasks in 12 px bold, two lines each (12 px regular
+// was too small to read, 18 px and 14 px too big).
 static void drawTasks(const char* title, const NaggerTask* tasks, uint8_t count, uint16_t total, uint16_t overdue, bool badges) {
   char h[40];
   snprintf(h, sizeof(h), "%s · %u", title, total);
@@ -343,8 +343,8 @@ static void drawTasks(const char* title, const NaggerTask* tasks, uint8_t count,
       width -= bw + 4;
     }
     bool emph = t.k == 1 || t.k == 2 || t.c == 1;
-    font(u8g2_font_helvB14_te);
-    wrap(t.t, 18, y + 16, width, 20, 2, emph ? K_WHITE : K_TEXT);
+    font(u8g2_font_helvB12_te);
+    wrap(t.t, 18, y + 16, width, 18, 2, emph ? K_WHITE : K_TEXT);
   }
 }
 
